@@ -26,6 +26,7 @@ import org.cloudbus.cloudsim.vms.VmSimple;
 import org.cloudsimplus.builders.tables.CloudletsTableBuilder;
 import org.cloudsimplus.heuristics.CloudletToVmMappingSimulatedAnnealing;
 import org.cloudsimplus.heuristics.CloudletToVmMappingSolution;
+import org.cloudsimplus.listeners.EventInfo;
 
 import ch.qos.logback.classic.pattern.Util;
 
@@ -40,6 +41,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
+import java.util.Random;
+import java.util.SortedMap;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
@@ -62,10 +65,10 @@ public class DatacenterBrokerSaf {
 	     */
 	    private int numberOfCreatedHosts = 0;
 
-	    private static final int HOSTS_TO_CREATE = 1;
+	    private static final int HOSTS_TO_CREATE = 8;
 	    private static final int VMS_TO_CREATE = 8;
-	    private static final int CLOUDLETS_TO_CREATE = 2;
-	    
+	    private static final int CLOUDLETS_TO_CREATE = 16;
+	    //comment for SA CLOUDLETS_TO_CREATE = 16
 		/**
 		 * Simulated Annealing (SA) parameters.
 		 */
@@ -74,12 +77,12 @@ public class DatacenterBrokerSaf {
 		public static final double SA_COOLING_RATE = 0.003;
 		public static final int    SA_NUMBER_OF_NEIGHBORHOOD_SEARCHES = 50;
 		public static final int    number_Of_PEs= 8;
-		public static final int    amount_Of_Ram = 1000 ;
+		public static final int    amount_Of_Ram = 2000 ;
 		private static HashMap<Integer, Double>  fitnessOfAll = new HashMap<Integer, Double> () ;
 		private static int constant = 1000;
 		//private static HashMap<Float,Float> usedVmResources = new HashMap<Float,Float>();
-		private static HashMap<Integer, Double> distribution = new HashMap<Integer,Double>(); 
-		public static final int    number_Of_Jobs= 4;
+		private static HashMap<Double, Double> distribution = new HashMap<Double,Double>(); 
+		public static final int    number_Of_Jobs= 1;
 		public static final int		number_Of_cloudlets =CLOUDLETS_TO_CREATE*number_Of_Jobs;
 		public double[][] cloudletInfo = new double[number_Of_cloudlets][4];
 		public static final int index_cpu_req = 0;
@@ -93,16 +96,17 @@ public class DatacenterBrokerSaf {
 		public double[][] usage_Cloudlet = new double[number_Of_cloudlets][2];
 		public ArrayList<Boolean> isNeedy= new ArrayList<Boolean>();
 		public org.cloudbus.cloudsim.brokers.DatacenterBrokerHeuristic broker0;
-	    //**************************************************************************
+		public static Map<Cloudlet, Vm> cloudletVmMap1 = new HashMap<Cloudlet, Vm>();
+		double[][] frees = new double[VMS_TO_CREATE][2];
+		//**************************************************************************
 		
 		public static void main(String[] args) {
 	        new DatacenterBrokerSaf();
 	    }
 		private static  double CalculateTemperature() {
-			// TODO Auto-generated method stub
-			 double sum = 0;
+			double sum = 0;
 	    	  
-	    	  HashMap<Integer, Double> distribution = calculatePdf(fitnessOfAll);
+	    	  HashMap< Double, Double> distribution = calculatePdf(fitnessOfAll);
 	    	  Iterator it = distribution.entrySet().iterator();
 	    	    while (it.hasNext()) {
 	    	    	HashMap.Entry pair = (HashMap.Entry)it.next();
@@ -116,9 +120,9 @@ public class DatacenterBrokerSaf {
 		}
 		
 		//*********************************************************************
-		static HashMap<Integer, Double> calculatePdf(HashMap<Integer, Double> fitnessofall){
+		static HashMap<Double, Double> calculatePdf(HashMap<Integer, Double> fitnessofall){
 	    	  double totalNumOfFitnesses = 0;
-	    	  Iterator itr = distribution.entrySet().iterator();
+	    	  Iterator itr = fitnessofall.entrySet().iterator();
 	    	    while (itr.hasNext()) {
 	    	    	HashMap.Entry pair = (HashMap.Entry)itr.next();
 	    	    	double key = (double) pair.getValue();
@@ -126,10 +130,10 @@ public class DatacenterBrokerSaf {
 	    		  {
 	                double count = distribution.get(key);
 	                count++;
-	                distribution.put((int) key, count );
+	                distribution.put( key, count );
 	    		  }else
 	            {
-	            	distribution.put((int) key, (double) 1 );
+	            	distribution.put( key, (double) 1 );
 	            }
 	    		  
 	    	  }
@@ -140,10 +144,10 @@ public class DatacenterBrokerSaf {
 	    	    	totalNumOfFitnesses += (double)pair.getValue();
 	    	    }
 	    	    it = distribution.entrySet().iterator();
-	    	    HashMap<Integer, Double> finalDistribution =new HashMap<Integer, Double>();
+	    	    HashMap<Double, Double> finalDistribution =new HashMap<Double, Double>();
 	    	    while (it.hasNext()) {
 	    	    	HashMap.Entry pair = (HashMap.Entry)it.next();
-	    	    	finalDistribution.put((Integer) pair.getKey(), (double)pair.getValue() / totalNumOfFitnesses );
+	    	    	finalDistribution.put((double) pair.getKey(), (double)pair.getValue() / totalNumOfFitnesses );
 	    	    }
 	    	    
 		return finalDistribution;
@@ -191,8 +195,9 @@ public class DatacenterBrokerSaf {
 			  
 		 }
 		  //**************************************************************************
-		   void DRfScheduling(ArrayList<Cloudlet> cloudlets) {
-				// TODO Auto-generated method stub
+		   void DRfScheduling(ArrayList<Cloudlet> cloudlets) {	
+		//	   CloudletToVmMappingSolution FairnessSolution =
+		            //    new CloudletToVmMappingSolution(heuristic);
 			  ArrayList<Cloudlet> temp = new ArrayList<Cloudlet>();
 			  Map<Integer, Double> unSortedMap = new HashMap<Integer, Double>();
 			  
@@ -214,59 +219,78 @@ public class DatacenterBrokerSaf {
 		                .forEachOrdered(x -> sortedMap.put(x.getKey(), x.getValue()));
 		       
 			  //bind to VM pick with lowest dominant share
-		       
-		       int i = 0;
-		       for (Map.Entry<Integer, Double> entry : sortedMap.entrySet()) {
+		       Vm minVm = null;
+		         for (Map.Entry<Integer, Double> entry : sortedMap.entrySet()) {
 		    	 //bind the cloudlets to the vms. This way, the broker
 		           // will submit the bound cloudlets only to the specific VM
 		          
-		    	   
+		    	  
 		             Cloudlet cloudlet = cloudletList.get(entry.getKey());
-		             
+		             Vm bestVm= null;
 		             if (!broker0.getCloudletFinishedList().contains(cloudlet)) {
-		            	 			//filter vm that fits cloudlets requirement.
-		            			ArrayList<Vm> tempVm = new ArrayList<Vm>();
-		            			for(Vm vm:vmList) 
-		            			{
-		            					double freeVmCpu= vm.getNumberOfPes()*(1-vm.getCpuPercentUsage()*0.01);
-		            					double freeVmRam=vm.getRam().getAvailableResource();
-		            					if(freeVmCpu >= cloudlet.getNumberOfPes() && 
-		            						freeVmRam >= cloudlet.getAmountOfRam()) 
-		            					{
-		            					tempVm.add(vm);
-		            					}
-		            			}
-		            			double minPesOfVms=tempVm.get(0).getNumberOfPes();
-		            			Vm minVm= null;
-		            			for(Vm vm:tempVm)
-		            			{  double VmnumberPes= vm.getNumberOfPes();
-		            				 if( VmnumberPes <= minPesOfVms) 
-		            				 {
-		            					 minPesOfVms=vm.getNumberOfPes(); 
-		            					 minVm= vm;
-		            				 }
-		            					 
-		            			}	
-		           cloudlet.setVm(minVm);	
-		           AddTOArray(cloudlet);		
-		            			
-	/*cloudlet.getBroker().getVmCreatedList().stream().filter(vm -> vm.getNumberOfPes() >= cloudlet.getNumberOfPes())
-		     	                .min(Comparator.comparingLong(Vm::getNumberOfPes)).orElse(vmList.get(7));*/
-		            	   
+		               //filter vm that fits cloudlets requirement.
+		            	 bestVm=bestFitCloudletToVm(cloudlet)	;   
+		            	 bindCloudletToVm(cloudlet, bestVm);
+		            	 AddTOArray(cloudlet);		            	 
 				        }
-		    	 
-		       
-		       }		 
+		                       
+		       	       }
+		       //  FairnessSolution.getResult1(cloudletVmMap1);
 			            
 			}
-		  //************************************************************************
+		   //**********************************************************************
+		   
+		   //**********************************************************************
+		  private void bindCloudletToVm(Cloudlet cloudlet, Vm bestVm) {
+			  cloudletVmMap1.put(cloudlet, bestVm);
+			  updatefreespace(cloudlet, bestVm);
+		}
+		  //**************************************************************************
+		private void updatefreespace(Cloudlet cloudlet, Vm bestVm) {
+			
+	    	 frees[(int)bestVm.getId()][0]-= (cloudlet.getNumberOfPes());
+	    	 frees[(int)bestVm.getId()][1]-= (cloudlet.getAmountOfRam());   	
+	    	    		 
+	    	    	}
+			
+		//***********************************************************************
+		   private Vm bestFitCloudletToVm(final Cloudlet cloudlet) {
+			   ArrayList<Vm> tempVm = new ArrayList<Vm>();
+			  
+				for(Vm vm:vmList) 
+				{
+						if( frees[(int)vm.getId()][0] >= cloudlet.getNumberOfPes() && 
+							frees[(int)vm.getId()][1] >= cloudlet.getAmountOfRam()) 
+						{
+						tempVm.add(vm);
+						}
+						
+				}
+				double minPesOfVms=tempVm.get(0).getNumberOfPes();
+				Vm minVm= null;
+				for(Vm vm:tempVm)
+				{  double VmnumberPes= vm.getNumberOfPes();
+					 if( VmnumberPes <= minPesOfVms) 
+					 {
+						 minPesOfVms=vm.getNumberOfPes(); 
+						 minVm= vm;
+					 }
+						 
+				}	
+				return minVm;
+		     }
+		   
+		   /*	   return 
+		   cloudlet.getBroker().getVmCreatedList().stream().filter(vm -> vm.getNumberOfPes() >= cloudlet.getNumberOfPes())
+	                .min(Comparator.comparingLong(Vm::getNumberOfPes)).orElse(broker0.defaultVmMapper(cloudlet));*/
+		  
 		  
 		//****************************************************************************
 		  double calculateDRFShares(Cloudlet c,float weight) {
-			        // drfFairshare = usage(dominant)/minshare(dominant)*weight
+			        // drfFairshare = request(dominant)/minshare(dominant)*weight
 			  double drfFairshare =  0;
 			  drfFairshare  = 
-					  usage_Cloudlet[(int)c.getId()][dominant[(int)c.getId()]] / 
+					  cloudletInfo[(int)c.getId()][dominant[(int)c.getId()]] / 
 					  cloudletInfo[(int)c.getId()][dominant[(int)c.getId()]+2] * weight;  
 			  return drfFairshare;
 		  }
@@ -286,28 +310,24 @@ public class DatacenterBrokerSaf {
 	    //**************************************************************************
 
 		 float calculateFitnessOfCloudlet(Cloudlet C) {
-			 double[] clusterCapacity=getClusterCalpacity() ;
-			 	  double vmCoreCapacity =clusterCapacity[0];
-			 	  double vmRamCapacity =clusterCapacity[1];
-			 	   //edit
-			      float fitness=(float) (( C.getAmountOfRam()* vmRamCapacity) +
-			     		( C.getNumberOfPes()* vmCoreCapacity)) ;
+			 double[] clusterCapacity=getClusterCapacity() ;
+			 	  double CoreCapacity =clusterCapacity[0];
+			 	  double RamCapacity =clusterCapacity[1];
+			 	  //fitness= request * available capacity
+			 	  float fitness=(float) (( C.getAmountOfRam()* RamCapacity) +
+			     		( C.getNumberOfPes()* CoreCapacity)) ;
 			      return fitness;
 			    }
 		    //**************************************************************************
 
 
-		 double[] getClusterCalpacity() {
-			 double[] clusterUsage=new double[2] ;
+		 double[] getClusterCapacity() {
 			 double[] clusterCapacity=new double[2] ;
-			 	  for(Vm vm :broker0.getVmCreatedList()) {
-			 		//usage percent of vm * total pes of vm= number of used pe's
-			 		 clusterUsage[0] += vm.getCpuPercentUsage()*vm.getNumberOfPes(); //CPU
-			 				clusterUsage[1] += vm.getRam().getAvailableResource(); //Ram
-			 		
-			 	  }
-			 	 clusterCapacity[index_cpu_req]= clusterInfo[index_cpu_req] - clusterUsage[index_cpu_req];
-			 	clusterCapacity[index_ram_req]= clusterInfo[index_ram_req] - clusterUsage[index_ram_req];
+			 	  for(Vm vm :vmList) {
+			 		//clusterCapacity = summation of first column of frees 
+			 	clusterCapacity[index_cpu_req]+= frees[(int)vm.getId()][0]; //cpu
+			 	clusterCapacity[index_ram_req]+= frees[(int)vm.getId()][1]; //ram
+			 	}
 				return clusterCapacity;
 			    }
 		    //**************************************************************************
@@ -337,6 +357,10 @@ public class DatacenterBrokerSaf {
 	        /*Enables just some level of log messages.
 	          Make sure to import org.cloudsimplus.util.Log;*/
 	        //Log.setLevel(ch.qos.logback.classic.Level.WARN);
+			for (int i=0; i < VMS_TO_CREATE ;++i) {
+				 frees [i][0]=number_Of_PEs;
+				 frees [i][1]=amount_Of_Ram;
+			 }
 
 	        System.out.println("Starting " + getClass().getSimpleName());
 	        this.vmList = new ArrayList<>();
@@ -347,22 +371,34 @@ public class DatacenterBrokerSaf {
 	        Datacenter datacenter0 = createDatacenter();
 
 	         broker0 = createBroker();
+	        
 
 	        createAndSubmitVms(broker0);
-	        createAndSubmitCloudlets(broker0);
+	        createAndSubmitCloudlets(broker0);	        
 	        calculateClusterAndFairRatios(cloudletInfo, 1, clusterInfo);
-	        Scheduling();
+	        Scheduling();	        
+	     // simulation.addOnClockTickListener(this::dynamicCloudletArrival);
+	        broker0.setVmMapper(this::Function);
 	        simulation.start();
-
+	        
 	        List<Cloudlet> finishedCloudlets = broker0.getCloudletFinishedList();
 	        new CloudletsTableBuilder(finishedCloudlets).build();
 	        printCloudlets();
 	        print(broker0);
 	    }
-		
+	//****************************************************************************	
 	   
+	/*	private void dynamicCloudletArrival(EventInfo e) {
+		        if((int)e.getTime() != 35) {
+		            return;
+		        }
+				
+			}*/
 		//**************************************************************************
-
+	private Vm Function (Cloudlet cloudlet1) {
+	 return cloudletVmMap1.get(cloudlet1);
+        		}
+       //****************************************************************************
 		
 		private org.cloudbus.cloudsim.brokers.DatacenterBrokerHeuristic createBroker() {
 			createSimulatedAnnealingHeuristic();
@@ -372,13 +408,13 @@ public class DatacenterBrokerSaf {
 		}
 
 		private void createAndSubmitCloudlets(org.cloudbus.cloudsim.brokers.DatacenterBrokerHeuristic broker0) {
-			int ram_temp =700;
-			int cpu_temp =0;
+			int ram_temp =400;
+			int cpu_temp =7;
 			int k=0;
 			for(int j = 0; j < number_Of_Jobs; j++) {
-				int cpu_minshare =1; //getRandomNumberOfPes(number_Of_PEs);
-				int ram_minshare = 100; //getRandomAmountOfRam(amount_Of_Ram);
-				cpu_temp++;
+				int cpu_minshare =3; //getRandomNumberOfPes(number_Of_PEs);
+				int ram_minshare =90; //getRandomAmountOfRam(amount_Of_Ram);
+				//cpu_temp++;
 				
 			for(int i = 0; i < CLOUDLETS_TO_CREATE; i++){
 			   cloudletList.add(createCloudlet(broker0, cpu_temp,ram_temp)) ;
@@ -406,7 +442,8 @@ public class DatacenterBrokerSaf {
 	    //**************************************************************************
 
 		private void createSimulatedAnnealingHeuristic() {
-			SA_INITIAL_TEMPERATURE= CalculateTemperature();
+			SA_INITIAL_TEMPERATURE=903.0899869919433;
+			//SA_INITIAL_TEMPERATURE= CalculateTemperature();
 			heuristic =
 			        new CloudletToVmMappingSimulatedAnnealing(SA_INITIAL_TEMPERATURE, new UniformDistr(0, 1));
 			heuristic.setColdTemperature(SA_COLD_TEMPERATURE);
@@ -533,6 +570,13 @@ public class DatacenterBrokerSaf {
 	    //**************************************************************************
 
 	    private double Scheduling() {
+	    	//uncomment for SimulatedAnnealingScheduling
+	    	//initialize usage_Cloudlet
+        	for (int i=0 ; i < number_Of_cloudlets; ++i) {
+        			usage_Cloudlet[i][0]= 5;
+        			usage_Cloudlet[i][1]= 100;
+        		}
+        	  	
 	             
 	           UpdateNeedy((ArrayList<Cloudlet>) cloudletList);
 	           
@@ -540,88 +584,71 @@ public class DatacenterBrokerSaf {
 	            {
 	            	//drf
 	            	DRfScheduling((ArrayList<Cloudlet>) cloudletList);
-	            	
+	                    	
 	            }
-	            else {
+	            else {	
 	            	//simulated annealing
-	            
 	            	SimulatedAnnealingScheduling((ArrayList<Cloudlet>) cloudletList);
 	            }
 	            
-	            
-	            
-	            
-	            
-	            //add to usage_cloudlet
-	            /*
-	            if ( !broker0.getCloudletFinishedList().contains(c.getId())) {
-	            usage_Cloudlet[(int) c.getId()][index_cpu_req]+= 
-	            		cloudletInfo[(int) c.getId()][index_cpu_req];
-	            usage_Cloudlet[(int) c.getId()][index_ram_req]+=
-	            		cloudletInfo[(int) c.getId()][index_ram_req];}*/
-	        
-	        /*
-	        printSolution(
-	            "Round robin solution used by DatacenterBrokerSimple class",
-	            solution, false);
-	        return solution.getCost();
-	        */
+	           
 			return 0;
 	    }
 	  
 		//**************************************************************************
 
-	    private double SimulatedAnnealingScheduling(ArrayList<Cloudlet> cloudletList) {
+	    private void SimulatedAnnealingScheduling(ArrayList<Cloudlet> cloudletList) {
 	    	CloudletToVmMappingSolution FairnessSolution =
 	                new CloudletToVmMappingSolution(heuristic);
 	    	
 	    	 Map<Integer, Double> unSortedMap = new HashMap<Integer, Double>() ;
 	    	for (Cloudlet c:cloudletList) {
-				  //fill sorted but not sorted yet  (cloudlet id, drf shares)
-				 
-				  
-				unSortedMap .put((int)c.getId(), calculateOurFairness(c,1));
+				  //fill sorted but not sorted yet  (cloudlet id, drf shares) 
+				  unSortedMap .put((int)c.getId(), calculateOurFairness(c,1));
 			  }
 			  
 			    //start ascending sort 
 			   LinkedHashMap<Integer, Double> sortedMap = new LinkedHashMap<>();
 		       unSortedMap.entrySet().stream().sorted(Map.Entry.comparingByValue())
 		                .forEachOrdered(x -> sortedMap.put(x.getKey(), x.getValue()));
-		       
-			  //bind to VM pick with lowest dominant share
-		       
-		       int i = 0;
-		       for (Map.Entry<Integer, Double> entry : sortedMap.entrySet()) {
-		    	 //bind the cloudlets to the vms. This way, the broker
-		           // will submit the bound cloudlets only to the specific VM
-		          
-		    	   
-		             Cloudlet cloudlet = cloudletList.get(entry.getKey());
-		             
-		             if (!broker0.getCloudletWaitingList().contains(cloudlet)) {
-		            	Vm v=  cloudlet 
-		     	                .getBroker()
-		     	                .getVmCreatedList()
-		     	                .stream()
-		     	                .filter(vm -> vm.getNumberOfPes() >= cloudlet.getNumberOfPes())
-		     	                .min(Comparator.comparingLong(Vm::getNumberOfPes))
-		     	                .orElse(broker0.defaultVmMapper(cloudlet));
-		     	                cloudlet.setVm(v);
-		     	                AddTOArray(cloudlet);
-				        }}
-	    	
-	    	
-	    	
-	    	
-	       
-	        printSolution(
-	            "DRF solution used by DatacenterBrokerSimple class",
-	            FairnessSolution, false);
-	        return FairnessSolution.getCost();
+		       createSimulatedAnnealingHeuristic();
+		    // uncomment for test calculate temperature => double s=0;
+			     // start Simulated Anealing
+		       // for (Map.Entry<Integer, Double> entry : sortedMap.entrySet())
+		       int i=0;
+		       double T = SA_INITIAL_TEMPERATURE;
+		              for(int j=0; j < number_Of_cloudlets/2 ; j++) {
+		        		   if (sortedMap.containsKey(i)) {
+		        			 double  value1 = sortedMap.get(i);
+		        			 double  value2 = sortedMap.get(i+1);
+		        	 Cloudlet cloudlet1 = cloudletList.get(i);
+		        	 Cloudlet cloudlet2 = cloudletList.get(i+1);
+		        	 Cloudlet cloudlet = cloudlet1;
+		        	 Cloudlet cloudleth = cloudlet2;
+		        	 Vm bestVm= null;
+		        	 Vm bestVmh= null;
+		        	 double p= Math.exp( ( (value2) - (value1) ) / T  );
+		    	      	  if(p>Math.random()) {
+		    	      		cloudlet = cloudlet2;
+		    	      		cloudleth = cloudlet1;
+		    	      			      	 }
+		    	      	sortedMap.remove(i);
+		    	      	sortedMap.remove(i+1);
+		    	      	if (!broker0.getCloudletFinishedList().contains(cloudlet)) {
+		    	      	bestVm=bestFitCloudletToVm(cloudlet);
+		    	      	bestVmh=bestFitCloudletToVm(cloudleth);
+		    	      	bindCloudletToVm(cloudlet, bestVm);
+		    	      	bindCloudletToVm(cloudleth, bestVmh);
+		    	      	AddTOArray(cloudlet);
+		    	      	AddTOArray(cloudleth);
+		        	    if (T > SA_COLD_TEMPERATURE) {
+		        	    T = SA_COOLING_RATE * T;
+		        	    }else {T=CalculateTemperature();}
+		        	   	i=i+2;	           
+		       	       } 
+		         }} // uncomment for test calculate temperature => s=CalculateTemperature();
 	    }
-			
-		
-
+	
 		//**************************************************************************
 
 		private void printSolution(String title,
