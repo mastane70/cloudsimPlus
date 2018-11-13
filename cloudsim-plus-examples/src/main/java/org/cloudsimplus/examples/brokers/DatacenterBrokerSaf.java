@@ -20,7 +20,9 @@ import org.cloudbus.cloudsim.resources.PeSimple;
 import org.cloudbus.cloudsim.schedulers.cloudlet.CloudletSchedulerTimeShared;
 import org.cloudbus.cloudsim.schedulers.vm.VmSchedulerTimeShared;
 import org.cloudbus.cloudsim.utilizationmodels.UtilizationModel;
+import org.cloudbus.cloudsim.utilizationmodels.UtilizationModelDynamic;
 import org.cloudbus.cloudsim.utilizationmodels.UtilizationModelFull;
+import org.cloudbus.cloudsim.utilizationmodels.UtilizationModelPlanetLab;
 import org.cloudbus.cloudsim.vms.Vm;
 import org.cloudbus.cloudsim.vms.VmSimple;
 import org.cloudsimplus.builders.tables.CloudletsTableBuilder;
@@ -65,11 +67,16 @@ public class DatacenterBrokerSaf {
 	     */
 	    private int numberOfCreatedHosts = 0;
 
-	    private static final int HOSTS_TO_CREATE = 8;
-	    private static final int VMS_TO_CREATE = 8;
-	    private static final int CLOUDLETS_TO_CREATE = 16;
-	    //comment for SA CLOUDLETS_TO_CREATE = 16
-		/**
+	    private static final int HOSTS_TO_CREATE = 128;
+	    private static final int VMS_TO_CREATE = 128;
+	    private static final int CLOUDLETS_TO_CREATE = 32;
+	    //comment for SA CLOUDLETS_TO_CREATE = 16 ,for DRF CLOUDLETS_TO_CREATE = 8
+	    /**
+		 * parameters for using planetlab
+		 */
+	    private static final String TRACE_FILE = "workload/planetlab/20110303/75-130-96-12_static_oxfr_ma_charter_com_irisaple_wup";
+	    private static final int SCHEDULING_INTERVAL = 300;
+	    /**
 		 * Simulated Annealing (SA) parameters.
 		 */
 		public static double SA_INITIAL_TEMPERATURE = 0;
@@ -82,7 +89,7 @@ public class DatacenterBrokerSaf {
 		private static int constant = 1000;
 		//private static HashMap<Float,Float> usedVmResources = new HashMap<Float,Float>();
 		private static HashMap<Double, Double> distribution = new HashMap<Double,Double>(); 
-		public static final int    number_Of_Jobs= 1;
+		public static final int    number_Of_Jobs= 4;
 		public static final int		number_Of_cloudlets =CLOUDLETS_TO_CREATE*number_Of_Jobs;
 		public double[][] cloudletInfo = new double[number_Of_cloudlets][4];
 		public static final int index_cpu_req = 0;
@@ -408,23 +415,23 @@ public class DatacenterBrokerSaf {
 		}
 
 		private void createAndSubmitCloudlets(org.cloudbus.cloudsim.brokers.DatacenterBrokerHeuristic broker0) {
-			int ram_temp =400;
-			int cpu_temp =7;
 			int k=0;
 			for(int j = 0; j < number_Of_Jobs; j++) {
-				int cpu_minshare =3; //getRandomNumberOfPes(number_Of_PEs);
-				int ram_minshare =90; //getRandomAmountOfRam(amount_Of_Ram);
+				int cpu_minshare =getRandomNumberOfPes(number_Of_PEs / 2); 
+				int ram_minshare =getRandomAmountOfRam(amount_Of_Ram / 2); 
+				int ram_temp =getRandomNumberOfPes(number_Of_PEs);
+				int cpu_temp =getRandomAmountOfRam(amount_Of_Ram);
+				double clocktime = getRandomAmountOfRam(60);
 				//cpu_temp++;
 				
-			for(int i = 0; i < CLOUDLETS_TO_CREATE; i++){
-			   cloudletList.add(createCloudlet(broker0, cpu_temp,ram_temp)) ;
+			for(int i = 0; i < CLOUDLETS_TO_CREATE; i++){				
+			   cloudletList.add(createCloudlet(broker0, cpu_temp,ram_temp,clocktime)) ;
 			   cloudletInfo[k][index_cpu_req]= cpu_temp;
 			   cloudletInfo[k][index_ram_req]= ram_temp;
 			   cloudletInfo[k][index_cpu_minshare]= cpu_minshare;
 			   cloudletInfo[k][index_ram_minshare]= ram_minshare;
 			   k++;
-			  
-			 }
+			   }
 		
 		}
 			broker0.submitCloudletList(cloudletList);
@@ -553,8 +560,22 @@ public class DatacenterBrokerSaf {
 
 
 	    private Cloudlet createCloudlet(DatacenterBroker broker, int numberOfPes , 
-	    								int amountOfRam) {
-	        long length = 400000; //in Million Structions (MI)
+	    								int amountOfRam, double clocktime) {	    	
+	    	int CLOUDLET_LENGTH = 100000000;
+	    	//to use planetlab entries
+	    	final UtilizationModel utilizationCpu = UtilizationModelPlanetLab.getInstance(TRACE_FILE, SCHEDULING_INTERVAL);
+	           Cloudlet cloudlet =
+	             new CloudletSimple(numberOfCreatedCloudlets++, CLOUDLET_LENGTH, number_Of_PEs,amount_Of_Ram)
+	                    .setFileSize(4096)
+	                    .setOutputSize(4096)
+	                    .setUtilizationModelCpu(utilizationCpu)
+	                    .setUtilizationModelBw(new UtilizationModelDynamic(0.2))
+	                    .setUtilizationModelRam(new UtilizationModelDynamic(0.4))
+	                    ;
+	           cloudlet.setExecStartTime(clocktime);
+	            
+	    	return cloudlet;
+	    	/* long length = 400000; //in Million Structions (MI)
 	        long fileSize = 300; //Size (in bytes) before execution
 	        long outputSize = 300; //Size (in bytes) after execution
 
@@ -565,7 +586,7 @@ public class DatacenterBrokerSaf {
 	        return new CloudletSimple(numberOfCreatedCloudlets++, length, numberOfPes, amountOfRam)
 	        .setFileSize(fileSize)
 	        .setOutputSize(outputSize)
-	        .setUtilizationModel(utilization);
+	        .setUtilizationModel(utilization);*/
 	    }
 	    //**************************************************************************
 
