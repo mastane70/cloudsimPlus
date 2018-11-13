@@ -573,7 +573,7 @@ public class DatacenterBrokerSaf {
 	                    .setUtilizationModelRam(new UtilizationModelDynamic(0.4))
 	                    ;
 	           cloudlet.setExecStartTime(clocktime);
-	            
+	            //
 	    	return cloudlet;
 	    	/* long length = 400000; //in Million Structions (MI)
 	        long fileSize = 300; //Size (in bytes) before execution
